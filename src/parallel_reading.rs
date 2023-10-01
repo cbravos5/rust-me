@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{ collections::HashMap, thread };
 
 const STAR_SPANGLED_BANNER: [&str; 8] = [
   "O say can you see by the dawn's early light,",
@@ -11,32 +11,59 @@ const STAR_SPANGLED_BANNER: [&str; 8] = [
   "O'er the land of the free and the home of the brave?",
 ];
 
-pub fn frequency(input: &[&str], worker_count: usize) -> HashMap<char, usize> {
-  // let lines_per_worker = input.len().div_euclid(worker_count);
-  // let remainder = input.len().rem_euclid(worker_count);
+fn count_chars(lines: &[&str]) -> HashMap<char, usize> {
+  let mut frequency_map: HashMap<char, usize> = HashMap::new();
 
-  // let worker_line_count: Vec<usize> = vec![lines_per_worker, worker_count];
-
-  // let fixed_workers_line_count = worker_line_count
-  //   .iter()
-  //   .enumerate()
-  //   .map(|(i, x)| if i > remainder { *x + 1 } else { *x })
-  //   .collect();
-
-  let mut frequency_hashmap: HashMap<char, usize> = HashMap::new();
-
-  for phrase in &input[0..7] {
-    for ch in phrase.chars() {
-      frequency_hashmap
-        .entry(ch)
-        .and_modify(|counter| {
-          *counter += 1;
-        })
-        .or_insert(1);
+  for line in lines {
+    for ch in line.to_lowercase().chars() {
+      if ch.is_alphabetic() {
+        frequency_map
+          .entry(ch)
+          .and_modify(|count| {
+            *count += 1;
+          })
+          .or_insert(1);
+      }
     }
   }
 
-  return frequency_hashmap;
+  frequency_map
+}
+
+pub fn frequency(input: &[&str], worker_count: usize) -> HashMap<char, usize> {
+  match input.len() {
+    0 => HashMap::new(),
+    _ =>
+      thread::scope(|scope| {
+        let input_chunks = input.chunks(input.len() / worker_count + 1);
+
+        let mut handles = vec![];
+
+        for chunk in input_chunks {
+          let handle = scope.spawn(|| count_chars(chunk));
+          handles.push(handle);
+        }
+
+        let mut frequency_map = handles.pop().unwrap().join().unwrap();
+
+        for result in handles {
+          result
+            .join()
+            .unwrap()
+            .into_iter()
+            .for_each(|(ch, value)| {
+              frequency_map
+                .entry(ch)
+                .and_modify(|count| {
+                  *count += value;
+                })
+                .or_insert(value);
+            });
+        }
+
+        frequency_map
+      }),
+  }
 }
 
 pub fn execute() {
@@ -45,6 +72,4 @@ pub fn execute() {
   for pair in count.iter() {
     println!("{} = {}", pair.0, pair.1);
   }
-
-  todo!("Count only letters and add shared memory parallelism with mutex")
 }
